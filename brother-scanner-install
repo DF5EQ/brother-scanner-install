@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# install Brother scanner in Linux Mint 20 with brscan2-0.2.5-1.amd64
+
+# the following files are installed by brscan2-0.2.5-1.amd64.deb as shown:
+# this information was extracted from the deb package
+#
+#   libsane-brother2.so         to  /usr/lib64/sane/    as link to libsane-brother2.so.1.0.7
+#   libsane-brother2.so.1       to  /usr/lib64/sane/    as link to libsane-brother2.so.1.0.7
+#   libsane-brother2.so.1.0.7   to  /usr/lib64/sane/    as library
+#   libbrcolm2.so               to  /usr/lib64/         as link to libbrcolm2.so.1.0.1
+#   libbrcolm2.so.1             to  /usr/lib64/         as link to libbrcolm2.so.1.0.1
+#   libbrcolm2.so.1.0.1         to  /usr/lib64/         as library
+#   libbrscandec2.so            to  /usr/lib64/         as link to libbrscandec2.so.1.0.0
+#   libbrscandec2.so.1          to  /usr/lib64/         as link to libbrscandec2.so.1.0.0
+#   libbrscandec2.so.1.0.0      to  /usr/lib64/         as library
+
+# the following files are searched by sane* in the shown directories
+# this information was retrieved with:
+#     sudo strace -f scanimage
+#     SANE_DEBUG_DLL=5 scanimage -L
+#
+# libsane-brother2.so.1   /usr/lib/x86_64-linux-gnu/sane/
+#                         /usr/lib/sane/
+#                         /usr/lib64/sane/
+#
+# libbrcolm2.so           /lib/x86_64-linux-gnu/tls/x86_64/x86_64/
+#                         /lib/x86_64-linux-gnu/tls/x86_64/
+#                         /lib/x86_64-linux-gnu/tls/
+#                         /lib/x86_64-linux-gnu/x86_64/x86_64/
+#                         /lib/x86_64-linux-gnu/x86_64/
+#                         /lib/x86_64-linux-gnu/
+#                         /usr/lib/x86_64-linux-gnu/tls/x86_64/x86_64/
+#                         /usr/lib/x86_64-linux-gnu/tls/x86_64/
+#                         /usr/lib/x86_64-linux-gnu/tls/
+#                         /usr/lib/x86_64-linux-gnu/x86_64/x86_64/
+#                         /usr/lib/x86_64-linux-gnu/x86_64/
+#                         /usr/lib/x86_64-linux-gnu/
+#                         /lib/tls/x86_64/x86_64/
+#                         /lib/tls/x86_64/
+#                         /lib/tls/
+#                         /lib/x86_64/x86_64/
+#                         /lib/x86_64/
+#                         /lib/
+#                         /usr/lib/tls/x86_64/x86_64/
+#                         /usr/lib/tls/x86_64/
+#                         /usr/lib/tls/
+#                         /usr/lib/x86_64/x86_64/
+#                         /usr/lib/x86_64/
+#                         /usr/lib/
+#
+# libbrscandec2.so        /lib/x86_64-linux-gnu/
+#                         /usr/lib/x86_64-linux-gnu/
+#                         /lib/
+#                         /usr/lib/
+
+# the following actions are to do:
+#
+#   libsane-brother2.so         nothing to do, not used
+#   libsane-brother2.so.1       can stay in /usr/lib64/sane/
+#   libsane-brother2.so.1.0.7   nothing to do, not used
+#   libbrcolm2.so               copy to a searched directory
+#   libbrcolm2.so.1             nothing to do, not used
+#   libbrcolm2.so.1.0.1         nothing to do, not used
+#   libbrscandec2.so            copy to a searched directory
+#   libbrscandec2.so.1          nothing to do, not used
+#   libbrscandec2.so.1.0.0      nothing to do, not used
+#
+# but for consistency all will be symlinked to /usr/lib/x86_64-linux-gnu
+
+scannername="DCP-135C"
+package=brscan2-0.2.5-1.amd64.deb
+dir=/tmp
+
+# download installation file
+echo "----- download $package"
+wget -nc -P $dir http://www.brother.com/pub/bsc/linux/dlf/$package
+
+# install package
+echo "----- install $package"
+apt deb $dir/$package
+
+# set needed symbloic links
+echo "------ create symbolic links in directories where are searched for them"
+sudo ln -sfv /usr/lib64/libbrcolm*            /usr/lib/x86_64-linux-gnu
+sudo ln -sfv /usr/lib64/libbrscandec*         /usr/lib/x86_64-linux-gnu
+sudo ln -sfv /usr/lib64/sane/libsane-brother* /usr/lib/x86_64-linux-gnu/sane
+
+# install libusb-0.1-4
+#   the need was retrieved with:
+#   SANE_DEBUG_DLL=5 scanimage -L
+echo "----- install libusb-0.1-4"
+apt install libusb-0.1-4
+
+# check if scanner is available on USB
+echo "----- get scanner connection"
+a=$(lsusb | grep $scannername)
+if [ $? -eq 0 ]; then
+    echo "Scanner '$scannername' found on USB"
+else
+    echo "Scanner '$scannername' not found on USB"
+    exit
+fi
+
+# get bus and device number of scanner
+usbbus=${a:4:3}
+usbdev=${a:15:3}
+echo "USB bus   : $usbbus"
+echo "USB device: $usbdev"
+
+# add user to the group of the scanner
+echo "----- add user to group of scanner"
+group=$(stat -c "%G" /dev/bus/usb/$usbbus/$usbdev)
+echo "Group of scanner:" $group
+groupchange=$(groups | grep -wc $group)
+sudo adduser $USER $group
+
+# show if reboot is required
+echo "----- inform about reboot"
+echo -n "Reboot required: "
+if [ $groupchange == 0 ]; then
+    echo "yes"
+else
+    echo "no"
+fi
+
